@@ -288,6 +288,7 @@ pub fn init(config: &TracingConfig) -> color_eyre::Result<TraceProviders> {
 
     // init open telemetry providers
     if let Some(otel_config) = &config.otel_config {
+        println!("Initializing OTEL config");
         let endpoint = &otel_config.collector_url;
         let headers = build_otel_headers(&otel_config.collector_auth_header);
         let resource = build_otel_resource();
@@ -315,6 +316,8 @@ pub fn init(config: &TracingConfig) -> color_eyre::Result<TraceProviders> {
         layer.init();
         tracing::warn!("OTEL tracing disabled");
     }
+
+    tracing::debug!("Env filter:  {prepared_env_filter:?}");
 
     Ok(providers_handle)
 }
