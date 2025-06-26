@@ -1,6 +1,7 @@
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs::OpenOptions;
 use tracing_subscriber::EnvFilter;
 #[cfg(feature = "tokio_console")]
 use tracing_subscriber::layer::Layer;
@@ -36,7 +37,7 @@ use opentelemetry_sdk::logs::SdkLoggerProvider;
 pub struct TracingOtelConfig {
     collector_url: String,
 
-    #[serde(skip_serializing)]
+    #[serde(default, skip_serializing)]
     collector_auth_header: Option<SecretString>,
 }
 impl TracingOtelConfig {
@@ -56,13 +57,17 @@ impl TracingOtelConfig {
 pub struct TracingConfig {
     log_file_path: Option<String>,
 
-    #[serde(flatten)]
+    #[serde(default = "TracingConfig::ansi_output_default")]
+    ansi_output: bool,
+
+    #[serde(default, flatten)]
     otel_config: Option<TracingOtelConfig>,
 }
 impl TracingConfig {
-    pub fn new(collector_url: Option<String>, collector_auth_header: Option<SecretString>, log_file_path: Option<String>) -> Self {
+    pub fn new(collector_url: Option<String>, collector_auth_header: Option<SecretString>, log_file_path: Option<String>, ansi_output: Option<bool>) -> Self {
         Self {
             log_file_path,
+            ansi_output: ansi_output.unwrap_or(Self::ansi_output_default()),
             otel_config: collector_url.map(|url| TracingOtelConfig {
                 collector_url: url,
                 collector_auth_header,
@@ -75,8 +80,19 @@ impl TracingConfig {
     pub fn otel_config(&self) -> &Option<TracingOtelConfig> {
         &self.otel_config
     }
+    pub fn ansi_output_default() -> bool {
+        true
+    }
 }
-
+impl Default for TracingConfig {
+    fn default() -> Self {
+        Self {
+            ansi_output: Self::ansi_output_default(),
+            log_file_path: None,
+            otel_config: None,
+        }
+    }
+}
 #[rustfmt::skip]
 pub fn get_build_env() -> &'static str {
     #[cfg(debug_assertions)]
@@ -188,8 +204,25 @@ pub fn init(config: &TracingConfig) -> color_eyre::Result<TraceProviders> {
         EnvFilter::try_from_default_env().unwrap_or_else(|_| prepared_env_filter.into());
 
     // build base layers
-    let layer = tracing_subscriber::registry().with(env_filter);
-    let layer = layer.with(tracing_subscriber::fmt::layer());
+    let layer = tracing_subscriber::registry()
+        .with(env_filter);
+    // stdout layer
+    let layer = layer.with(tracing_subscriber::fmt::layer()
+        .with_ansi(config.ansi_output)
+    );
+    // conditionally add log file layer if path is provided in config
+    let file_logging_layer = match &config.log_file_path {
+        Some(file_path) => {
+            let file = OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(file_path)
+            .expect("Log file should be writable");
+            Some(tracing_subscriber::fmt::layer().with_ansi(false).with_writer(file))
+        },
+        None => None
+    };
+    let layer = layer.with(file_logging_layer);
 
     // conditionally add tokio console layer
     #[cfg(feature = "tokio_console")]
