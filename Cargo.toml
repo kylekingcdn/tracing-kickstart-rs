@@ -1,9 +1,10 @@
 [package]
-name = "tracing-bundle"
+name = "tracing-kickstart"
 version = "0.1.0"
 authors = ["Kyle King"]
 edition = "2024"
-repository = "https://github.com/kylekingcdn/tracing-bundle-rs"
+description = "Bootstrap tracing + OTEL connections. Intended for personal use only."
+repository = "https://github.com/kylekingcdn/tracing-kickstart-rs"
 license = "MIT"
 
 [features]

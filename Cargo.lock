@@ -1875,25 +1875,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tracing-bundle"
-version = "0.1.0"
-dependencies = [
- "color-eyre",
- "console-subscriber",
- "opentelemetry",
- "opentelemetry-appender-tracing",
- "opentelemetry-otlp",
- "opentelemetry-resource-detectors",
- "opentelemetry-semantic-conventions",
- "opentelemetry_sdk",
- "secrecy",
- "serde",
- "tracing",
- "tracing-opentelemetry",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "tracing-core"
 version = "0.1.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1910,6 +1891,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b1581020d7a273442f5b45074a6a57d5757ad0a47dac0e9f0bd57b81936f3db"
 dependencies = [
  "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "tracing-kickstart"
+version = "0.1.0"
+dependencies = [
+ "color-eyre",
+ "console-subscriber",
+ "opentelemetry",
+ "opentelemetry-appender-tracing",
+ "opentelemetry-otlp",
+ "opentelemetry-resource-detectors",
+ "opentelemetry-semantic-conventions",
+ "opentelemetry_sdk",
+ "secrecy",
+ "serde",
+ "tracing",
+ "tracing-opentelemetry",
  "tracing-subscriber",
 ]
 
