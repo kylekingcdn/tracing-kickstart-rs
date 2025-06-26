@@ -41,7 +41,6 @@ pub struct TracingOtelConfig {
     collector_auth_header: Option<SecretString>,
 }
 impl TracingOtelConfig {
-
     pub fn new(collector_url: String, collector_auth_header: Option<SecretString>) -> Self {
         Self {
             collector_url,
@@ -55,6 +54,7 @@ impl TracingOtelConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TracingConfig {
+    #[serde(default)]
     log_file_path: Option<String>,
 
     #[serde(default = "TracingConfig::ansi_output_default")]
