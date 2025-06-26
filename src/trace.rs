@@ -268,8 +268,9 @@ pub fn init(config: &TracingConfig) -> color_eyre::Result<TraceProviders> {
     let file_logging_layer = match &config.log_file_path {
         Some(file_path) => {
             let file = OpenOptions::new()
-            .append(true)
+            .write(true)
             .create(true)
+            .truncate(true)
             .open(file_path)
             .expect("Log file should be writable");
             Some(tracing_subscriber::fmt::layer().with_ansi(false).with_writer(file))
