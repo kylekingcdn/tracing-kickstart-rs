@@ -31,8 +31,7 @@ pub struct Conf {
     trace: TracingConfig,
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
     // load config
     dotenv().ok(); // load vars from .env file
     let settings = Config::builder()
