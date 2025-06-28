@@ -1,6 +1,7 @@
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt;
 use std::fs::OpenOptions;
 use tracing_subscriber::EnvFilter;
 #[cfg(feature = "tokio_console")]
@@ -389,7 +390,7 @@ pub fn dump_crate_vars(attrs: &ServiceAttributeStore) {
 // ---- Struct for containing otel providers
 
 // TODO: alternatively use `opentelemetry::global::set_x_provider()` fns
-#[derive(Debug, Default, Clone)]
+#[derive(Default, Clone)]
 pub struct TraceProviders {
     pub traces: Option<SdkTracerProvider>,
     pub logs: Option<SdkLoggerProvider>,
@@ -415,5 +416,29 @@ impl TraceProviders {
                 println!("error shutting down metrics provider: {error}");
             }
         }
+    }
+}
+impl fmt::Debug for TraceProviders {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "TraceProviders (")?;
+        let mut i = 0;
+        if self.traces.is_some() {
+            write!(f, "SdkTracerProvider")?;
+            i += 1;
+        }
+        if self.logs.is_some() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "SdkLoggerProvider")?;
+            i += 1;
+        }
+        if self.metrics.is_some() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "SdkMeterProvider")?;
+        }
+        write!(f, ")")
     }
 }

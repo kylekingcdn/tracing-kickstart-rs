@@ -1,6 +1,6 @@
 [package]
 name = "tracing-kickstart"
-version = "0.3.1"
+version = "0.3.2"
 authors = ["Kyle King"]
 edition = "2024"
 description = "Bootstrap tracing + OTEL connections. Intended for personal use only."
