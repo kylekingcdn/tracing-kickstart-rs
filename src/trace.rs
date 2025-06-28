@@ -251,12 +251,25 @@ fn init_otel_metrics_provider(
     Ok(provider)
 }
 
+/// Compile-time attributes to be provided by the owning application/service.
+///
+/// Used as a set of parameters to pass to [`init()`]
 #[derive(Debug, Clone)]
 pub struct ServiceAttributeStore {
     pub crate_name: &'static str,
     pub pkg_name: &'static str,
 }
 impl ServiceAttributeStore {
+    /// Initializes a new [`ServiceAttributeStore`].
+    ///
+    /// Typically the args passed should be `env!("CARGO_CRATE_NAME")` and `env!("CARGO_PKG_NAME")`, respectively.
+    ///
+    /// ### Example
+    ///
+    /// ```rust
+    /// use tracing_kickstart::ServiceAttributeStore;
+    /// let attrs = ServiceAttributeStore::new(env!("CARGO_CRATE_NAME"), env!("CARGO_PKG_NAME"));
+    /// ```
     pub fn new(crate_name: &'static str, pkg_name: &'static str) -> Self {
         Self {
             crate_name,
