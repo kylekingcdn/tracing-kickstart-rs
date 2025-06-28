@@ -97,10 +97,12 @@ impl Default for TracingConfig {
 // -- custom attributes + attribute helpers
 
 pub mod custom_attribute {
+    pub const SERVICE_CRATE_NAME: &str = "service.crate.name";
     pub const SERVICE_VERSION_MAJOR: &str = "service.version.major";
     pub const SERVICE_VERSION_MINOR: &str = "service.version.minor";
     pub const SERVICE_VERSION_PATCH: &str = "service.version.patch";
-    pub const SERVICE_ORIGIN_PACKAGE_NAME: &str = "service.origin_package.name";
+    pub const SERVICE_ORIGIN_PACKAGE_NAME: &str = "service.origin.package_name";
+    pub const SERVICE_ORIGIN_CRATE_NAME: &str = "service.origin.crate_name";
 }
 #[rustfmt::skip]
 pub fn get_build_env() -> &'static str {
@@ -108,9 +110,6 @@ pub fn get_build_env() -> &'static str {
     { "debug" }
     #[cfg(not(debug_assertions))]
     { "release" }
-}
-pub fn get_service_name() -> Option<String> {
-    std::env::var("CARGO_PKG_NAME").ok()
 }
 pub fn get_service_version() -> Option<String> {
     std::env::var("CARGO_PKG_VERSION").ok()
@@ -125,6 +124,14 @@ pub fn get_service_version_patch() -> Option<String> {
     std::env::var("CARGO_PKG_VERSION_PATCH").ok()
 }
 pub fn get_origin_package_name() -> Option<&'static str> {
+    let package_name = env!("CARGO_PKG_NAME");
+    if package_name.is_empty() {
+        None
+    } else {
+        Some(package_name)
+    }
+}
+pub fn get_origin_crate_name() -> Option<&'static str> {
     let package_name = env!("CARGO_CRATE_NAME");
     if package_name.is_empty() {
         None
@@ -133,12 +140,12 @@ pub fn get_origin_package_name() -> Option<&'static str> {
     }
 }
 
-fn build_otel_resource() -> Resource {
+fn build_otel_resource(service_attrs: &ServiceAttributeStore) -> Resource {
     let mut builder = Resource::builder_empty();
-    // root/primary service name
-    if let Some(service_name) = get_service_name() {
-        builder = builder.with_attribute(KeyValue::new(attribute::SERVICE_NAME, service_name));
-    }
+    // root/primary service name + package name
+    builder = builder.with_attribute(KeyValue::new(attribute::SERVICE_NAME, service_attrs.pkg_name));
+    builder = builder.with_attribute(KeyValue::new(custom_attribute::SERVICE_CRATE_NAME, service_attrs.crate_name));
+
     // version
     if let Some(service_version) = get_service_version() {
         builder = builder.with_attribute(KeyValue::new(attribute::SERVICE_VERSION, service_version));
@@ -155,6 +162,9 @@ fn build_otel_resource() -> Resource {
     // returns the name of the package that contains the associated tracing call
     if let Some(origin_package_name) = get_origin_package_name() {
         builder = builder.with_attribute(KeyValue::new(custom_attribute::SERVICE_ORIGIN_PACKAGE_NAME, origin_package_name));
+    }
+    if let Some(origin_crate_name) = get_origin_crate_name() {
+        builder = builder.with_attribute(KeyValue::new(custom_attribute::SERVICE_ORIGIN_CRATE_NAME, origin_crate_name));
     }
 
     builder
@@ -241,13 +251,26 @@ fn init_otel_metrics_provider(
     Ok(provider)
 }
 
+#[derive(Debug, Clone)]
+pub struct ServiceAttributeStore {
+    pub crate_name: &'static str,
+    pub pkg_name: &'static str,
+}
+impl ServiceAttributeStore {
+    pub fn new(crate_name: &'static str, pkg_name: &'static str) -> Self {
+        Self {
+            crate_name,
+            pkg_name,
+        }
+    }
+}
+
 // if tracing config is none, otel providers won't be handled
 #[allow(unused_mut)]
-pub fn init(config: &TracingConfig) -> color_eyre::Result<TraceProviders> {
-    let crate_name = get_service_name().expect("Service name should exist from rust runtime exec");
-    let crate_target_name = crate_name.replace("-", "_");
+pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig) -> color_eyre::Result<TraceProviders> {
     let mut prepared_env_filter = format!(
-        "warn,{crate_target_name}=debug,tracing_kickstart=debug" // include self in default filter
+        "warn,{}=debug,tracing_kickstart=debug", // include self in default filter
+        service_attrs.crate_name
     );
 
     // add env filters for tokio console subscriber (controller by feature flag)
@@ -291,13 +314,13 @@ pub fn init(config: &TracingConfig) -> color_eyre::Result<TraceProviders> {
         println!("Initializing OTEL config");
         let endpoint = &otel_config.collector_url;
         let headers = build_otel_headers(&otel_config.collector_auth_header);
-        let resource = build_otel_resource();
+        let resource = build_otel_resource(&service_attrs);
 
         // traces
         let traces_provider =
             init_otel_traces_provider(endpoint, headers.clone(), resource.clone())?;
         // - add tracing layer for tracing/span -> otel/trace
-        let layer = layer.with(OpenTelemetryLayer::new(traces_provider.tracer(crate_name)));
+        let layer = layer.with(OpenTelemetryLayer::new(traces_provider.tracer(service_attrs.crate_name)));
         providers_handle.traces = Some(traces_provider);
 
         // logs
@@ -322,25 +345,29 @@ pub fn init(config: &TracingConfig) -> color_eyre::Result<TraceProviders> {
     Ok(providers_handle)
 }
 
-pub fn dump_crate_vars() {
-    let service_name = get_service_name().unwrap_or("- unset -".into());
+pub fn dump_crate_vars(attrs: &ServiceAttributeStore) {
+    let service_name = attrs.pkg_name;
+    let crate_name = attrs.crate_name;
     let service_version = get_service_version().unwrap_or("- unset -".into());
     let service_version_major = get_service_version_major().unwrap_or("- unset -".into());
     let service_version_minor = get_service_version_minor().unwrap_or("- unset -".into());
     let service_version_patch = get_service_version_patch().unwrap_or("- unset -".into());
-    let origin_package_name = get_origin_package_name().unwrap_or("- unset -".into());
+    let origin_pkg_name = get_origin_package_name().unwrap_or("- unset -".into());
+    let origin_crate_name = get_origin_crate_name().unwrap_or("- unset -".into());
     let build_env = get_build_env();
 
     println!("");
     println!("Resolved tracing attributes");
     println!("--------------------");
-    println!("service_name:          {service_name}");
-    println!("service_version:       {service_version}");
-    println!("service_version_major: {service_version_major}");
-    println!("service_version_minor: {service_version_minor}");
-    println!("service_version_patch: {service_version_patch}");
-    println!("origin_package_name:   {origin_package_name}");
-    println!("build_env:             {build_env}");
+    println!("service_name (pkg_name): {service_name}");
+    println!("service_crate_name:      {crate_name}");
+    println!("service_version:         {service_version}");
+    println!("service_version_major:   {service_version_major}");
+    println!("service_version_minor:   {service_version_minor}");
+    println!("service_version_patch:   {service_version_patch}");
+    println!("origin_pkg_name:         {origin_pkg_name}");
+    println!("origin_crate_name:       {origin_crate_name}");
+    println!("build_env:               {build_env}");
     println!("");
 }
 
@@ -375,6 +402,3 @@ impl TraceProviders {
         }
     }
 }
-
-
-
