@@ -33,6 +33,8 @@ use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::LogExporter;
 use opentelemetry_sdk::logs::SdkLoggerProvider;
 
+pub use opentelemetry_otlp::ExporterBuildError;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TracingOtelConfig {
     collector_url: String,
@@ -192,7 +194,7 @@ fn init_otel_traces_provider(
     collector_endpoint: &str,
     headers: HashMap<String, String>,
     resource: Resource,
-) -> color_eyre::Result<SdkTracerProvider> {
+) -> Result<SdkTracerProvider, ExporterBuildError> {
     let exporter = SpanExporter::builder()
         .with_http()
         .with_headers(headers)
@@ -214,7 +216,7 @@ fn init_otel_logs_provider(
     collector_endpoint: &str,
     headers: HashMap<String, String>,
     resource: Resource,
-) -> color_eyre::Result<SdkLoggerProvider> {
+) -> Result<SdkLoggerProvider, ExporterBuildError> {
     let exporter = LogExporter::builder()
         .with_http()
         .with_headers(headers)
@@ -234,7 +236,7 @@ fn init_otel_metrics_provider(
     collector_endpoint: &str,
     headers: HashMap<String, String>,
     resource: Resource,
-) -> color_eyre::Result<SdkMeterProvider> {
+) -> Result<SdkMeterProvider, ExporterBuildError> {
     let exporter = MetricExporter::builder()
         .with_http()
         .with_headers(headers)
@@ -280,7 +282,7 @@ impl ServiceAttributeStore {
 
 // if tracing config is none, otel providers won't be handled
 #[allow(unused_mut)]
-pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig) -> color_eyre::Result<TraceProviders> {
+pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig) -> Result<TraceProviders, ExporterBuildError> {
     let mut prepared_env_filter = format!(
         "warn,{}=debug,tracing_kickstart=debug", // include self in default filter
         service_attrs.crate_name
