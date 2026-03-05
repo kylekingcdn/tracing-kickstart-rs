@@ -78,7 +78,7 @@ impl TracingConfig {
         }
     }
     pub fn log_file_path(&self) -> Option<&str> {
-        self.log_file_path.as_ref().map(|s| s.as_str())
+        self.log_file_path.as_deref()
     }
     pub fn otel_config(&self) -> &Option<TracingOtelConfig> {
         &self.otel_config
@@ -257,30 +257,64 @@ fn init_otel_metrics_provider(
 /// Compile-time attributes to be provided by the owning application/service.
 ///
 /// Used as a set of parameters to pass to [`init()`]
+///
+/// Service attributes can be generated and passed in using the `build_attrs` macro, e.g.:
+///
+/// ```
+/// use tracing_kickstart::TracingConfig;
+///
+/// let attrs = tracing_kickstart::build_attrs!();
+/// let conf = TracingConfig::default();
+///
+/// let tracing_providers = tracing_kickstart::init(attrs, &conf).unwrap();
+/// ```
 #[derive(Debug, Clone)]
 pub struct ServiceAttributeStore {
     pub crate_name: &'static str,
     pub pkg_name: &'static str,
-}
-impl ServiceAttributeStore {
-    /// Initializes a new [`ServiceAttributeStore`].
-    ///
-    /// Typically the args passed should be `env!("CARGO_CRATE_NAME")` and `env!("CARGO_PKG_NAME")`, respectively.
-    ///
-    /// ### Example
-    ///
-    /// ```rust
-    /// use tracing_kickstart::ServiceAttributeStore;
-    /// let attrs = ServiceAttributeStore::new(env!("CARGO_CRATE_NAME"), env!("CARGO_PKG_NAME"));
-    /// ```
-    pub fn new(crate_name: &'static str, pkg_name: &'static str) -> Self {
-        Self {
-            crate_name,
-            pkg_name,
-        }
-    }
+    pub version: &'static str,
+    pub version_major: &'static str,
+    pub version_minor: &'static str,
+    pub version_patch: &'static str,
 }
 
+/// Generates service attributes using env! calls.
+///
+/// This is done using a macro to allow for the `env!(..)` calls to be scoped from the
+/// parent package/crate, rather than from `tracing-kickstart`.
+#[macro_export]
+macro_rules! build_attrs {
+    // This macro takes an argument of designator `ident` and
+    // creates a function named `$func_name`.
+    // The `ident` designator is used for variable/function names.
+    () => (
+        tracing_kickstart::ServiceAttributeStore {
+            crate_name: env!("CARGO_CRATE_NAME"),
+            pkg_name: env!("CARGO_CRATE_NAME"),
+            version: env!("CARGO_PKG_VERSION"),
+            version_major: env!("CARGO_PKG_VERSION_MAJOR"),
+            version_minor: env!("CARGO_PKG_VERSION_MINOR"),
+            version_patch: env!("CARGO_PKG_VERSION_PATCH"),
+        }
+    )
+}
+
+/// Initialize tracing
+///
+/// Service attributes can be generated and passed in using the `build_attrs` macro, e.g.:
+///
+/// ```
+/// use tracing_kickstart::TracingConfig;
+///
+/// let attrs = tracing_kickstart::build_attrs!();
+/// let conf = TracingConfig::default();
+///
+/// let tracing_providers = tracing_kickstart::init(attrs, &conf).unwrap();
+///
+/// // do some work..
+///
+/// tracing_providers.shutdown();
+/// ```
 // if tracing config is none, otel providers won't be handled
 #[allow(unused_mut)]
 pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig) -> Result<TraceProviders, ExporterBuildError> {
@@ -364,15 +398,15 @@ pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig) -> Res
 pub fn dump_crate_vars(attrs: &ServiceAttributeStore) {
     let service_name = attrs.pkg_name;
     let crate_name = attrs.crate_name;
-    let service_version = get_service_version().unwrap_or("- unset -".into());
-    let service_version_major = get_service_version_major().unwrap_or("- unset -".into());
-    let service_version_minor = get_service_version_minor().unwrap_or("- unset -".into());
-    let service_version_patch = get_service_version_patch().unwrap_or("- unset -".into());
-    let origin_pkg_name = get_origin_package_name().unwrap_or("- unset -".into());
-    let origin_crate_name = get_origin_crate_name().unwrap_or("- unset -".into());
+    let service_version = attrs.version;
+    let service_version_major = attrs.version_major;
+    let service_version_minor = attrs.version_minor;
+    let service_version_patch = attrs.version_patch;
+    let origin_pkg_name = get_origin_package_name().unwrap_or("- unset -");
+    let origin_crate_name = get_origin_crate_name().unwrap_or("- unset -");
     let build_env = get_build_env();
 
-    println!("");
+    println!();
     println!("Resolved tracing attributes");
     println!("--------------------");
     println!("service_name (pkg_name): {service_name}");
@@ -384,7 +418,7 @@ pub fn dump_crate_vars(attrs: &ServiceAttributeStore) {
     println!("origin_pkg_name:         {origin_pkg_name}");
     println!("origin_crate_name:       {origin_crate_name}");
     println!("build_env:               {build_env}");
-    println!("");
+    println!();
 }
 
 // ---- Struct for containing otel providers
@@ -399,22 +433,16 @@ pub struct TraceProviders {
 impl TraceProviders {
     pub fn shutdown(self) {
         // shutdown traces
-        if let Some(provider) = self.traces {
-            if let Err(error) = provider.shutdown() {
+        if let Some(provider) = self.traces && let Err(error) = provider.shutdown() {
                 println!("error shutting down traces provider: {error}");
-            }
         }
         // shutdown logs
-        if let Some(provider) = self.logs {
-            if let Err(error) = provider.shutdown() {
-                println!("error shutting down logs provider: {error}");
-            }
+        if let Some(provider) = self.logs && let Err(error) = provider.shutdown() {
+            println!("error shutting down logs provider: {error}");
         }
         // shutdown metrics
-        if let Some(provider) = self.metrics {
-            if let Err(error) = provider.shutdown() {
-                println!("error shutting down metrics provider: {error}");
-            }
+        if let Some(provider) = self.metrics && let Err(error) = provider.shutdown() {
+            println!("error shutting down metrics provider: {error}");
         }
     }
 }
