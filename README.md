@@ -41,10 +41,7 @@ fn main() {
     let conf = settings.try_deserialize::<Conf>().unwrap(); // deserialize into Conf struct
 
     // store compile-time attributes used for tracing_kickstart
-    let svc_attrs = ServiceAttributeStore::new(
-        env!("CARGO_CRATE_NAME"),
-        env!("CARGO_PKG_NAME")
-    );
+    let svc_attrs = tracing_kickstart::build_attrs!();
     // dump vars used as attributes in OTEL reporting (for debug purposes)
     tracing_kickstart::dump_crate_vars(&svc_attrs);
 
