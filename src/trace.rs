@@ -114,18 +114,6 @@ pub fn get_build_env() -> &'static str {
     #[cfg(not(debug_assertions))]
     { "release" }
 }
-pub fn get_service_version() -> Option<String> {
-    std::env::var("CARGO_PKG_VERSION").ok()
-}
-pub fn get_service_version_major() -> Option<String> {
-    std::env::var("CARGO_PKG_VERSION_MAJOR").ok()
-}
-pub fn get_service_version_minor() -> Option<String> {
-    std::env::var("CARGO_PKG_VERSION_MINOR").ok()
-}
-pub fn get_service_version_patch() -> Option<String> {
-    std::env::var("CARGO_PKG_VERSION_PATCH").ok()
-}
 pub fn get_origin_package_name() -> Option<&'static str> {
     let package_name = env!("CARGO_PKG_NAME");
     if package_name.is_empty() {
@@ -150,18 +138,11 @@ fn build_otel_resource(service_attrs: &ServiceAttributeStore) -> Resource {
     builder = builder.with_attribute(KeyValue::new(custom_attribute::SERVICE_CRATE_NAME, service_attrs.crate_name));
 
     // version
-    if let Some(service_version) = get_service_version() {
-        builder = builder.with_attribute(KeyValue::new(attribute::SERVICE_VERSION, service_version));
-        if let Some(version_part) = get_service_version_major() {
-            builder = builder.with_attribute(KeyValue::new(custom_attribute::SERVICE_VERSION_MAJOR, version_part));
-            if let Some(version_part) = get_service_version_minor() {
-                builder = builder.with_attribute(KeyValue::new(custom_attribute::SERVICE_VERSION_MINOR, version_part));
-                if let Some(version_part) = get_service_version_patch() {
-                    builder = builder.with_attribute(KeyValue::new(custom_attribute::SERVICE_VERSION_PATCH, version_part));
-                }
-            }
-        }
-    }
+    builder = builder.with_attribute(KeyValue::new(attribute::SERVICE_VERSION, service_attrs.version));
+    builder = builder.with_attribute(KeyValue::new(custom_attribute::SERVICE_VERSION_MAJOR, service_attrs.version_major));
+    builder = builder.with_attribute(KeyValue::new(custom_attribute::SERVICE_VERSION_MINOR, service_attrs.version_minor));
+    builder = builder.with_attribute(KeyValue::new(custom_attribute::SERVICE_VERSION_PATCH, service_attrs.version_patch));
+
     // returns the name of the package that contains the associated tracing call
     if let Some(origin_package_name) = get_origin_package_name() {
         builder = builder.with_attribute(KeyValue::new(custom_attribute::SERVICE_ORIGIN_PACKAGE_NAME, origin_package_name));
