@@ -22,16 +22,17 @@ APP__TRACE__ANSI_OUTPUT=true
 ```rust
 use config::{Config, Environment};
 use dotenvy::dotenv;
-use serde::{Deserialize, Serialize};
-use tracing_kickstart::{ServiceAttributeStore, TracingConfig};
+use serde::Deserialize;
+use tracing_kickstart::TracingConfig;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Conf {
     // pulled in automatically from env vars
     trace: TracingConfig,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // load config
     dotenv().ok(); // load vars from .env file
     let settings = Config::builder()
@@ -40,19 +41,23 @@ fn main() {
         .unwrap();
     let conf = settings.try_deserialize::<Conf>().unwrap(); // deserialize into Conf struct
 
-    // store compile-time attributes used for tracing_kickstart
-    let svc_attrs = tracing_kickstart::build_attrs!();
-    // dump vars used as attributes in OTEL reporting (for debug purposes)
-    tracing_kickstart::dump_crate_vars(&svc_attrs);
+    // collect attributes for this crate
+    let attrs = tracing_kickstart::build_attrs!();
+    attrs.dump(); // log attributes to stdout
+
+    // set an optional override for the fallback env filter set by tracing_kickstart
+    let custom_fallback_env_filter = None; //Some("warn,example_app=debug")
 
     // init tracing, receive a handle for the tracing providers
-    let tracing_providers = tracing_kickstart::init(svc_attrs, &conf.trace).unwrap();
+    let tracing_providers = tracing_kickstart::init(attrs, &conf.trace, custom_fallback_env_filter).unwrap();
+    tracing_providers.register_globally(); // optionally register all configured providers globally
     tracing::info!(?conf.trace, "Tracing initialized");
 
     // app does some important work here
     println!("very important work");
 
     // graceful shutdown of various tracing providers (logs, metrics, traces) using the provided handle
+    tracing::debug!("Shutting down tracing providers: {tracing_providers:?}");
     tracing_providers.shutdown();
 }
 ```
