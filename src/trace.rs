@@ -10,7 +10,6 @@ use tracing_subscriber::util::SubscriberInitExt;
 // opentelemetry - base
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::resource::{Resource, TelemetryResourceDetector};
-// use opentelemetry_sdk::propagation::TraceContextPropagator; // ?
 use opentelemetry_otlp::{Protocol, WithExportConfig, WithHttpConfig};
 use opentelemetry_resource_detectors::{
     HostResourceDetector, OsResourceDetector, ProcessResourceDetector,
@@ -139,16 +138,17 @@ pub fn get_origin_crate_name() -> Option<&'static str> {
 }
 
 fn build_otel_resource(service_attrs: &ServiceAttributeStore) -> Resource {
-    let mut builder = Resource::builder_empty();
     // root/primary service name + package name
-    builder = builder.with_attribute(KeyValue::new(attribute::SERVICE_NAME, service_attrs.pkg_name));
-    builder = builder.with_attribute(KeyValue::new(custom_attribute::SERVICE_CRATE_NAME, service_attrs.crate_name));
+    let mut builder = Resource::builder_empty()
+    .with_attribute(KeyValue::new(attribute::SERVICE_NAME, service_attrs.pkg_name))
+    .with_attribute(KeyValue::new(custom_attribute::SERVICE_CRATE_NAME, service_attrs.crate_name));
 
     // version
-    builder = builder.with_attribute(KeyValue::new(attribute::SERVICE_VERSION, service_attrs.version));
-    builder = builder.with_attribute(KeyValue::new(custom_attribute::SERVICE_VERSION_MAJOR, service_attrs.version_major));
-    builder = builder.with_attribute(KeyValue::new(custom_attribute::SERVICE_VERSION_MINOR, service_attrs.version_minor));
-    builder = builder.with_attribute(KeyValue::new(custom_attribute::SERVICE_VERSION_PATCH, service_attrs.version_patch));
+    builder = builder
+    .with_attribute(KeyValue::new(attribute::SERVICE_VERSION, service_attrs.version))
+    .with_attribute(KeyValue::new(custom_attribute::SERVICE_VERSION_MAJOR, service_attrs.version_major))
+    .with_attribute(KeyValue::new(custom_attribute::SERVICE_VERSION_MINOR, service_attrs.version_minor))
+    .with_attribute(KeyValue::new(custom_attribute::SERVICE_VERSION_PATCH, service_attrs.version_patch));
 
     // returns the name of the package that contains the associated tracing call
     if let Some(origin_package_name) = get_origin_package_name() {
@@ -466,10 +466,11 @@ pub struct TraceProviders {
     pub metrics: Option<SdkMeterProvider>,
 }
 impl TraceProviders {
+    /// Triggers shutdown for each provider that has been set
     pub fn shutdown(self) {
         // shutdown traces
         if let Some(provider) = self.traces && let Err(error) = provider.shutdown() {
-                println!("error shutting down traces provider: {error}");
+            println!("error shutting down traces provider: {error}");
         }
         // shutdown logs
         if let Some(provider) = self.logs && let Err(error) = provider.shutdown() {
