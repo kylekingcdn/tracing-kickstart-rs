@@ -4,8 +4,6 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs::OpenOptions;
 use tracing_subscriber::EnvFilter;
-#[cfg(feature = "tokio_console")]
-use tracing_subscriber::layer::Layer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
@@ -57,6 +55,13 @@ impl TracingOtelConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TracingConfig {
+    /// Custom env filter which takes priority over RUST_LOG
+    ///
+    /// This is beneficial when loading app conf from env,
+    /// as it allows overriding the env filter without setting a global RUST_LOG
+    #[serde(default)]
+    filter: Option<String>,
+
     #[serde(default)]
     log_file_path: Option<String>,
 
@@ -67,8 +72,9 @@ pub struct TracingConfig {
     otel_config: Option<TracingOtelConfig>,
 }
 impl TracingConfig {
-    pub fn new(collector_url: Option<String>, collector_auth_header: Option<SecretString>, log_file_path: Option<String>, ansi_output: Option<bool>) -> Self {
+    pub fn new(collector_url: Option<String>, collector_auth_header: Option<SecretString>, log_file_path: Option<String>, ansi_output: Option<bool>, filter: Option<String>) -> Self {
         Self {
+            filter,
             log_file_path,
             ansi_output: ansi_output.unwrap_or(Self::ansi_output_default()),
             otel_config: collector_url.map(|url| TracingOtelConfig {
@@ -91,6 +97,7 @@ impl Default for TracingConfig {
     fn default() -> Self {
         Self {
             ansi_output: Self::ansi_output_default(),
+            filter: None,
             log_file_path: None,
             otel_config: None,
         }
@@ -289,35 +296,81 @@ macro_rules! build_attrs {
 ///
 /// let attrs = tracing_kickstart::build_attrs!();
 /// let conf = TracingConfig::default();
+/// let custom_env_filter = None;
+/// // let custom_env_filter = "warn,example_app=debug"
 ///
-/// let tracing_providers = tracing_kickstart::init(attrs, &conf).unwrap();
+/// let tracing_providers = tracing_kickstart::init(attrs, &conf, custom_env_filter).unwrap();
+///
+/// // Optionally register all configured providers globally
+/// tracing_providers.register_globally();
 ///
 /// // do some work..
 ///
 /// tracing_providers.shutdown();
 /// ```
+///
+/// ## `EnvFilter`
+///
+/// The EnvFilter is resolved using the first available from:
+/// - `TracingConfig::filter` (typically set from app config env var, e.g. `APP__TRACING__FILTER=app=warn`)
+/// - `RUST_LOG` env var
+/// - The `default_env_filter` parameter in this function (used to overide the default fallback)
+/// - default fallback (library defined, set to `"warn,{crate_name}=debug,tracing_kickstart=debug`)
+/// ---
+/// Regardless of how the `EnvFilter` is resolved, all required filters for `console_subscriber` will be added
+/// **if the console_subscriber** feature flag is enabled.
 // if tracing config is none, otel providers won't be handled
-#[allow(unused_mut)]
-pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig) -> Result<TraceProviders, ExporterBuildError> {
-    let mut prepared_env_filter = format!(
-        "warn,{}=debug,tracing_kickstart=debug", // include self in default filter
-        service_attrs.crate_name
-    );
+pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig, default_env_filter: Option<&str>) -> Result<TraceProviders, ExporterBuildError> {
+    // resolve the env filter in the following priority
+    let filter: EnvFilter = {
+        // config env filter
+        if let Some(filter_str) = &config.filter {
+            println!("Resolved tracing EnvFilter from provided config: {filter_str:?}");
+            filter_str.into()
+        }
+        // `RUST LOG`
+        else if let Ok(filter) = EnvFilter::try_from_default_env() {
+            println!("Resolved tracing EnvFilter from `RUST_LOG`: {:?}", filter.to_string());
+            filter
+        }
+        // function parameter (`default_env_filter`)
+        else if let Some(filter_str) = default_env_filter {
+            println!("Resolving tracing EnvFilter from `tracing_kickstart::init(.., default_env_filter)`: {filter_str:?}");
+            filter_str.into()
+        }
+        // library-defined fallback env filter
+        else {
+            let filter_str = format!(
+                "warn,{}=debug,tracing_kickstart=debug", // include self in default filter
+                service_attrs.crate_name
+            );
+            println!("Using tracing-kickstart fallback EnvFilter: {filter_str:?}");
+            filter_str.into()
+        }
+    };
 
-    // add env filters for tokio console subscriber (controller by feature flag)
+    // add env filters for tokio console subscriber (controlled by feature flag)
     #[cfg(feature = "tokio_console")]
-    { prepared_env_filter.push_str(",tokio=trace,runtime=trace"); }
-
-    let env_filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| prepared_env_filter.clone().into());
+    let filter = {
+        let mut filter_str = filter.to_string();
+        if !filter_str.is_empty() {
+            filter_str.push(',');
+        }
+        filter_str.push_str("tokio=trace,runtime=trace");
+        EnvFilter::from(filter_str)
+    };
+    println!("Launching with tracing filter: {}", filter);
 
     // build base layers
     let layer = tracing_subscriber::registry()
-        .with(env_filter);
+    .with(filter);
+
     // stdout layer
-    let layer = layer.with(tracing_subscriber::fmt::layer()
+    let layer = layer.with(
+        tracing_subscriber::fmt::layer()
         .with_ansi(config.ansi_output)
     );
+
     // conditionally add log file layer if path is provided in config
     let file_logging_layer = match &config.log_file_path {
         Some(file_path) => {
@@ -335,7 +388,7 @@ pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig) -> Res
 
     // conditionally add tokio console layer
     #[cfg(feature = "tokio_console")]
-    { let layer = layer.with(console_subscriber::spawn()); }
+    let layer = layer.with(console_subscriber::spawn());
 
     // default has all 3 provider field options set to None
     let mut providers_handle = TraceProviders::default();
@@ -362,6 +415,7 @@ pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig) -> Res
 
         // metrics
         let metrics_provider = init_otel_metrics_provider(endpoint, headers, resource)?;
+
         providers_handle.metrics = Some(metrics_provider);
 
         layer.init();
@@ -370,8 +424,6 @@ pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig) -> Res
         layer.init();
         tracing::warn!("OTEL tracing disabled");
     }
-
-    tracing::debug!("Env filter:  {prepared_env_filter:?}");
 
     Ok(providers_handle)
 }
