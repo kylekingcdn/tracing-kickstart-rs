@@ -466,6 +466,20 @@ pub struct TraceProviders {
     pub metrics: Option<SdkMeterProvider>,
 }
 impl TraceProviders {
+    /// Calls `opentelemetry::global::set_x_provider(..); for all configured providers, where applicable`
+    pub fn register_globally(&self) {
+        // register traces
+        if let Some(provider) = &self.traces {
+            tracing::info!("Traces provider registered globally");
+            opentelemetry::global::set_tracer_provider(provider.clone());
+        }
+        // register metrics
+        if let Some(provider) = &self.metrics {
+            tracing::info!("Metrics provider registered globally");
+            opentelemetry::global::set_meter_provider(provider.clone());
+        }
+    }
+
     /// Triggers shutdown for each provider that has been set
     pub fn shutdown(self) {
         // shutdown traces
