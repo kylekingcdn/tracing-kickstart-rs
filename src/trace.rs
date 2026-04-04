@@ -107,7 +107,7 @@ impl Default for TracingConfig {
 // -- custom attributes + attribute helpers
 
 pub mod custom_attribute {
-    pub const SERVICE_CRATE_NAME: &str = "service.crate.name";
+    pub const SERVICE_CRATE_NAME: &str = "service.crate_name";
     pub const SERVICE_VERSION_MAJOR: &str = "service.version.major";
     pub const SERVICE_VERSION_MINOR: &str = "service.version.minor";
     pub const SERVICE_VERSION_PATCH: &str = "service.version.patch";
