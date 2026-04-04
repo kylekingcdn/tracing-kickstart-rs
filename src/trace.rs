@@ -25,6 +25,7 @@ use tracing_opentelemetry::OpenTelemetryLayer;
 // opentelemetry - metrics
 use opentelemetry_otlp::MetricExporter;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
+use tracing_opentelemetry::MetricsLayer;
 
 // opentelemetry - logs
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
@@ -443,7 +444,8 @@ pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig, defaul
 
         // metrics
         let metrics_provider = init_otel_metrics_provider(endpoint, headers, resource)?;
-
+        // - add layer for tracing events -> otel/metrics
+        let layer = layer.with(MetricsLayer::new(metrics_provider.clone()));
         providers_handle.metrics = Some(metrics_provider);
 
         layer.init();
