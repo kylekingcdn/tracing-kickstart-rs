@@ -265,6 +265,34 @@ pub struct ServiceAttributeStore {
     pub version_minor: &'static str,
     pub version_patch: &'static str,
 }
+impl ServiceAttributeStore {
+    pub fn dump(&self) {
+
+        let service_name = self.pkg_name;
+        let crate_name = self.crate_name;
+        let service_version = self.version;
+        let service_version_major = self.version_major;
+        let service_version_minor = self.version_minor;
+        let service_version_patch = self.version_patch;
+        let origin_pkg_name = get_origin_package_name().unwrap_or("- unset -");
+        let origin_crate_name = get_origin_crate_name().unwrap_or("- unset -");
+        let build_env = get_build_env();
+
+        println!();
+        println!("Resolved tracing attributes");
+        println!("--------------------");
+        println!("service_name (pkg_name): {service_name}");
+        println!("service_crate_name:      {crate_name}");
+        println!("service_version:         {service_version}");
+        println!("service_version_major:   {service_version_major}");
+        println!("service_version_minor:   {service_version_minor}");
+        println!("service_version_patch:   {service_version_patch}");
+        println!("origin_pkg_name:         {origin_pkg_name}");
+        println!("origin_crate_name:       {origin_crate_name}");
+        println!("build_env:               {build_env}");
+        println!();
+    }
+}
 
 /// Generates service attributes using env! calls.
 ///
@@ -426,32 +454,6 @@ pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig, defaul
     }
 
     Ok(providers_handle)
-}
-
-pub fn dump_crate_vars(attrs: &ServiceAttributeStore) {
-    let service_name = attrs.pkg_name;
-    let crate_name = attrs.crate_name;
-    let service_version = attrs.version;
-    let service_version_major = attrs.version_major;
-    let service_version_minor = attrs.version_minor;
-    let service_version_patch = attrs.version_patch;
-    let origin_pkg_name = get_origin_package_name().unwrap_or("- unset -");
-    let origin_crate_name = get_origin_crate_name().unwrap_or("- unset -");
-    let build_env = get_build_env();
-
-    println!();
-    println!("Resolved tracing attributes");
-    println!("--------------------");
-    println!("service_name (pkg_name): {service_name}");
-    println!("service_crate_name:      {crate_name}");
-    println!("service_version:         {service_version}");
-    println!("service_version_major:   {service_version_major}");
-    println!("service_version_minor:   {service_version_minor}");
-    println!("service_version_patch:   {service_version_patch}");
-    println!("origin_pkg_name:         {origin_pkg_name}");
-    println!("origin_crate_name:       {origin_crate_name}");
-    println!("build_env:               {build_env}");
-    println!();
 }
 
 // ---- Struct for containing otel providers
