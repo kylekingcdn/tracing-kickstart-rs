@@ -307,7 +307,7 @@ macro_rules! build_attrs {
     () => (
         tracing_kickstart::ServiceAttributeStore {
             crate_name: env!("CARGO_CRATE_NAME"),
-            pkg_name: env!("CARGO_CRATE_NAME"),
+            pkg_name: env!("CARGO_PKG_NAME"),
             version: env!("CARGO_PKG_VERSION"),
             version_major: env!("CARGO_PKG_VERSION_MAJOR"),
             version_minor: env!("CARGO_PKG_VERSION_MINOR"),
