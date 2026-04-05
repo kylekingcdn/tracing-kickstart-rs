@@ -1,6 +1,6 @@
 [package]
 name = "tracing-kickstart"
-version = "0.5.2"
+version = "0.6.0"
 authors = ["Kyle King"]
 edition = "2024"
 description = "Bootstrap tracing + OTEL connections. Intended for personal use only."
@@ -10,13 +10,19 @@ license = "MIT"
 [features]
 default = []
 tokio_console = ["dep:console-subscriber"]
+detector_hostresource = ["dep:opentelemetry-resource-detectors"]
+detector_os = ["dep:opentelemetry-resource-detectors"]
+detector_process = ["dep:opentelemetry-resource-detectors"]
+detector_telemetry = []
+attrs_crate_name = []
+attrs_origin = []
 
 [dependencies]
 console-subscriber = { version = "0.5.0", optional = true }
 opentelemetry = "0.31.0"
 opentelemetry-appender-tracing = "0.31.1"
 opentelemetry-otlp = { version = "0.31.1", default-features = false, features = ["http-proto", "internal-logs", "logs", "metrics", "trace", "reqwest-blocking-client", "reqwest-rustls"] }
-opentelemetry-resource-detectors = "0.10.0"
+opentelemetry-resource-detectors = { version = "0.10.0", optional = true }
 opentelemetry-semantic-conventions = { version = "0.31.0", features = ["semconv_experimental"] }
 opentelemetry_sdk = { version = "0.31.0", features = ["rt-tokio"] }
 secrecy = { version = "0.10.3", features = ["serde"] }

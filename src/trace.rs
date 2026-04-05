@@ -9,11 +9,17 @@ use tracing_subscriber::util::SubscriberInitExt;
 
 // opentelemetry - base
 use opentelemetry::KeyValue;
-use opentelemetry_sdk::resource::{Resource, TelemetryResourceDetector};
+use opentelemetry_sdk::resource::Resource;
+#[cfg(feature = "detector_telemetry")]
+use opentelemetry_sdk::resource::TelemetryResourceDetector;
 use opentelemetry_otlp::{Protocol, WithExportConfig, WithHttpConfig};
-use opentelemetry_resource_detectors::{
-    HostResourceDetector, OsResourceDetector, ProcessResourceDetector,
-};
+#[cfg(feature = "detector_hostresource")]
+use opentelemetry_resource_detectors::HostResourceDetector;
+#[cfg(feature = "detector_os")]
+use opentelemetry_resource_detectors::OsResourceDetector;
+#[cfg(feature = "detector_process")]
+use opentelemetry_resource_detectors::ProcessResourceDetector;
+
 use opentelemetry_semantic_conventions::attribute;
 
 // opentelemetry - traces
@@ -68,14 +74,26 @@ pub struct TracingConfig {
     #[serde(default = "TracingConfig::ansi_output_default")]
     ansi_output: bool,
 
+    /// If set, will be user as the value for the `deployment.environment.name` attribute
+    #[serde(default)]
+    deployment_env: Option<String>,
+
     #[serde(default, flatten)]
     otel_config: Option<TracingOtelConfig>,
 }
 impl TracingConfig {
-    pub fn new(collector_url: Option<String>, collector_auth_header: Option<SecretString>, log_file_path: Option<String>, ansi_output: Option<bool>, filter: Option<String>) -> Self {
+    pub fn new(
+        collector_url: Option<String>,
+        collector_auth_header: Option<SecretString>,
+        log_file_path: Option<String>,
+        ansi_output: Option<bool>,
+        filter: Option<String>,
+        deployment_env: Option<String>,
+    ) -> Self {
         Self {
             filter,
             log_file_path,
+            deployment_env,
             ansi_output: ansi_output.unwrap_or(Self::ansi_output_default()),
             otel_config: collector_url.map(|url| TracingOtelConfig {
                 collector_url: url,
@@ -98,6 +116,7 @@ impl Default for TracingConfig {
         Self {
             ansi_output: Self::ansi_output_default(),
             filter: None,
+            deployment_env: None,
             log_file_path: None,
             otel_config: None,
         }
@@ -107,11 +126,16 @@ impl Default for TracingConfig {
 // -- custom attributes + attribute helpers
 
 pub mod custom_attribute {
+    pub const DEPLOYMENT_BUILD_TYPE: &str = "deployment.build_type";
+    #[cfg(feature = "attrs_crate_name")]
     pub const SERVICE_CRATE_NAME: &str = "service.crate_name";
     pub const SERVICE_VERSION_MAJOR: &str = "service.version.major";
     pub const SERVICE_VERSION_MINOR: &str = "service.version.minor";
     pub const SERVICE_VERSION_PATCH: &str = "service.version.patch";
+
+    #[cfg(feature = "attrs_origin")]
     pub const SERVICE_ORIGIN_PACKAGE_NAME: &str = "service.origin.package_name";
+    #[cfg(feature = "attrs_origin")]
     pub const SERVICE_ORIGIN_CRATE_NAME: &str = "service.origin.crate_name";
 }
 #[rustfmt::skip]
@@ -138,11 +162,15 @@ pub fn get_origin_crate_name() -> Option<&'static str> {
     }
 }
 
-fn build_otel_resource(service_attrs: &ServiceAttributeStore) -> Resource {
+fn build_otel_resource(service_attrs: &ServiceAttributeStore, deployment_env: Option<String>) -> Resource {
     // root/primary service name + package name
     let mut builder = Resource::builder_empty()
-    .with_attribute(KeyValue::new(attribute::SERVICE_NAME, service_attrs.pkg_name))
-    .with_attribute(KeyValue::new(custom_attribute::SERVICE_CRATE_NAME, service_attrs.crate_name));
+    .with_attribute(KeyValue::new(attribute::SERVICE_NAME, service_attrs.pkg_name));
+
+    #[cfg(feature = "attrs_crate_name")]
+    {
+        builder = builder.with_attribute(KeyValue::new(custom_attribute::SERVICE_CRATE_NAME, service_attrs.crate_name));
+    }
 
     // version
     builder = builder
@@ -151,21 +179,47 @@ fn build_otel_resource(service_attrs: &ServiceAttributeStore) -> Resource {
     .with_attribute(KeyValue::new(custom_attribute::SERVICE_VERSION_MINOR, service_attrs.version_minor))
     .with_attribute(KeyValue::new(custom_attribute::SERVICE_VERSION_PATCH, service_attrs.version_patch));
 
-    // returns the name of the package that contains the associated tracing call
-    if let Some(origin_package_name) = get_origin_package_name() {
-        builder = builder.with_attribute(KeyValue::new(custom_attribute::SERVICE_ORIGIN_PACKAGE_NAME, origin_package_name));
-    }
-    if let Some(origin_crate_name) = get_origin_crate_name() {
-        builder = builder.with_attribute(KeyValue::new(custom_attribute::SERVICE_ORIGIN_CRATE_NAME, origin_crate_name));
+    #[cfg(feature = "attrs_origin")]
+    {
+        // returns the name of the package that contains the associated tracing call
+        if let Some(origin_package_name) = get_origin_package_name() {
+            builder = builder.with_attribute(KeyValue::new(custom_attribute::SERVICE_ORIGIN_PACKAGE_NAME, origin_package_name));
+        }
+        if let Some(origin_crate_name) = get_origin_crate_name() {
+            builder = builder.with_attribute(KeyValue::new(custom_attribute::SERVICE_ORIGIN_CRATE_NAME, origin_crate_name));
+        }
     }
 
-    builder
-        .with_attribute(KeyValue::new(attribute::DEPLOYMENT_ENVIRONMENT_NAME, get_build_env())) // build mode: release/debug
-        .with_detector(Box::new(TelemetryResourceDetector)) // telemetry sdk stack attrs
-        .with_detector(Box::new(HostResourceDetector::default())) // host id, host arch
-        .with_detector(Box::new(ProcessResourceDetector)) // process args, pid
-        .with_detector(Box::new(OsResourceDetector)) // os
-        .build()
+    // build mode: release/debug
+    builder = builder.with_attribute(KeyValue::new(custom_attribute::DEPLOYMENT_BUILD_TYPE, get_build_env()));
+
+    // deployment env set from config/runtime env
+    if let Some(env) = deployment_env {
+        builder = builder.with_attribute(KeyValue::new(attribute::DEPLOYMENT_ENVIRONMENT_NAME, env));
+    }
+
+    #[cfg(feature = "detector_telemetry")]
+    {
+        // telemetry sdk stack attrs
+        builder = builder.with_detector(Box::new(TelemetryResourceDetector));
+    }
+    #[cfg(feature = "detector_hostresource")]
+    {
+        // host id, host arch
+        builder = builder.with_detector(Box::new(HostResourceDetector::default()));
+    }
+    #[cfg(feature = "detector_process")]
+    {
+        // process args, pid
+        builder = builder.with_detector(Box::new(ProcessResourceDetector));
+    }
+    #[cfg(feature = "detector_os")]
+    {
+        // os
+        builder = builder.with_detector(Box::new(OsResourceDetector));
+    }
+
+    builder.build()
 }
 
 fn build_otel_headers(auth_header_val: &Option<SecretString>) -> HashMap<String, String> {
@@ -268,7 +322,6 @@ pub struct ServiceAttributeStore {
 }
 impl ServiceAttributeStore {
     pub fn dump(&self) {
-
         let service_name = self.pkg_name;
         let crate_name = self.crate_name;
         let service_version = self.version;
@@ -427,7 +480,7 @@ pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig, defaul
         println!("Initializing OTEL config");
         let endpoint = &otel_config.collector_url;
         let headers = build_otel_headers(&otel_config.collector_auth_header);
-        let resource = build_otel_resource(&service_attrs);
+        let resource = build_otel_resource(&service_attrs, config.deployment_env.clone());
 
         // traces
         let traces_provider =

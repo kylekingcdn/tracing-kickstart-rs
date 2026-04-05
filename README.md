@@ -61,3 +61,33 @@ async fn main() {
     tracing_providers.shutdown();
 }
 ```
+
+## Feature flags
+
+**Default**: none
+
+**`tokio_console`** - Enables tokio's console feature
+  - Pulls `console-subscriber` into dependency tree and handles required env filter updates
+
+**`detector_hostresource`** - enables the [`HostResourceDetector`](https://docs.rs/opentelemetry-resource-detectors/latest/opentelemetry_resource_detectors/struct.HostResourceDetector.html)
+  - Added attributes: `host.id`, `host.arch`
+
+**`detector_os`** - enables the [`OsResourceDetector`](https://docs.rs/opentelemetry-resource-detectors/latest/opentelemetry_resource_detectors/struct.OsResourceDetector.html)
+  - Added attributes: `os_type`
+
+**`detector_process`**
+  - Enables the [`ProcessResourceDetector`](https://docs.rs/opentelemetry-resource-detectors/latest/opentelemetry_resource_detectors/struct.ProcessResourceDetector.html)
+  - Added attributes: `process.command_args`, `process.pid`, `process.runtime.version`, `process.runtime.name`, `process.runtime.description`
+
+**`detector_telemetry`** - enables the [`TelemetryResourceDetector`](https://docs.rs/opentelemetry_sdk/latest/opentelemetry_sdk/resource/struct.TelemetryResourceDetector.html)
+  - Added attributes: `telemetry.sdk.name`, `telemetry.sdk.language`, `telemetry.sdk.version`
+
+**`attrs_crate_name`**
+  - Adds an additional attribute (`service.crate_name`) for the crate name.
+  - This will only differ from `service_name` for crates/packages which contain hyphen's in their package name.
+  - E.g. for this library:
+    - `service.name`: `tracing-kickstart`
+    - `service.crate_name`: `tracing_kickstart`
+
+**`attrs_origin`**
+  - Adds attributes for info regarding the `tracing-kickstart` package, e.g. the version, crate name, etc
