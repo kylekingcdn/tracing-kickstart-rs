@@ -91,3 +91,6 @@ async fn main() {
 
 **`attrs_origin`**
   - Adds attributes for info regarding the `tracing-kickstart` package, e.g. the version, crate name, etc
+
+**`attrs_version_expanded`**
+  - Adds attributes for each version part: `service.version.major`, `service.version.minor`, `service.version.patch`

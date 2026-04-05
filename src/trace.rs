@@ -139,8 +139,11 @@ pub mod custom_attribute {
     pub const DEPLOYMENT_BUILD_TYPE: &str = "deployment.build_type";
     #[cfg(feature = "attrs_crate_name")]
     pub const SERVICE_CRATE_NAME: &str = "service.crate_name";
+    #[cfg(feature = "attrs_version_expanded")]
     pub const SERVICE_VERSION_MAJOR: &str = "service.version.major";
+    #[cfg(feature = "attrs_version_expanded")]
     pub const SERVICE_VERSION_MINOR: &str = "service.version.minor";
+    #[cfg(feature = "attrs_version_expanded")]
     pub const SERVICE_VERSION_PATCH: &str = "service.version.patch";
 
     #[cfg(feature = "attrs_origin")]
@@ -183,11 +186,14 @@ fn build_otel_resource(service_attrs: &ServiceAttributeStore, deployment_env: Op
     }
 
     // version
-    builder = builder
-    .with_attribute(KeyValue::new(attribute::SERVICE_VERSION, service_attrs.version))
-    .with_attribute(KeyValue::new(custom_attribute::SERVICE_VERSION_MAJOR, service_attrs.version_major))
-    .with_attribute(KeyValue::new(custom_attribute::SERVICE_VERSION_MINOR, service_attrs.version_minor))
-    .with_attribute(KeyValue::new(custom_attribute::SERVICE_VERSION_PATCH, service_attrs.version_patch));
+    builder = builder.with_attribute(KeyValue::new(attribute::SERVICE_VERSION, service_attrs.version));
+
+    #[cfg(feature = "attrs_version_expanded")] {
+        builder = builder
+        .with_attribute(KeyValue::new(custom_attribute::SERVICE_VERSION_MAJOR, service_attrs.version_major))
+        .with_attribute(KeyValue::new(custom_attribute::SERVICE_VERSION_MINOR, service_attrs.version_minor))
+        .with_attribute(KeyValue::new(custom_attribute::SERVICE_VERSION_PATCH, service_attrs.version_patch));
+    }
 
     #[cfg(feature = "attrs_origin")]
     {
