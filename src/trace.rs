@@ -79,8 +79,8 @@ pub struct TracingConfig {
     #[serde(default)]
     deployment_env: Option<String>,
 
-    /// If set, will configure the metrics export period
-    metrics_interval: Option<Duration>,
+    /// If set, will configure the metrics export period (duration in seconds)
+    metrics_interval: Option<u64>,
 
     #[serde(default, flatten)]
     otel_config: Option<TracingOtelConfig>,
@@ -93,7 +93,7 @@ impl TracingConfig {
         ansi_output: Option<bool>,
         filter: Option<String>,
         deployment_env: Option<String>,
-        metrics_interval: Option<Duration>,
+        metrics_interval: Option<u64>,
     ) -> Self {
         Self {
             filter,
@@ -106,6 +106,9 @@ impl TracingConfig {
                 collector_auth_header,
             }),
         }
+    }
+    pub fn metrics_interval_duration(&self) -> Option<Duration> {
+        self.metrics_interval.map(Duration::from_secs)
     }
     pub fn log_file_path(&self) -> Option<&str> {
         self.log_file_path.as_deref()
@@ -508,7 +511,7 @@ pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig, defaul
         providers_handle.logs = Some(logs_provider);
 
         // metrics
-        let metrics_provider = init_otel_metrics_provider(endpoint, headers, resource, config.metrics_interval)?;
+        let metrics_provider = init_otel_metrics_provider(endpoint, headers, resource, config.metrics_interval_duration())?;
         // - add layer for tracing events -> otel/metrics
         let layer = layer.with(MetricsLayer::new(metrics_provider.clone()));
         providers_handle.metrics = Some(metrics_provider);
