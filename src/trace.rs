@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::OpenOptions;
+use std::time::Duration;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -30,7 +31,7 @@ use tracing_opentelemetry::OpenTelemetryLayer;
 
 // opentelemetry - metrics
 use opentelemetry_otlp::MetricExporter;
-use opentelemetry_sdk::metrics::SdkMeterProvider;
+use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use tracing_opentelemetry::MetricsLayer;
 
 // opentelemetry - logs
@@ -78,6 +79,9 @@ pub struct TracingConfig {
     #[serde(default)]
     deployment_env: Option<String>,
 
+    /// If set, will configure the metrics export period
+    metrics_interval: Option<Duration>,
+
     #[serde(default, flatten)]
     otel_config: Option<TracingOtelConfig>,
 }
@@ -89,11 +93,13 @@ impl TracingConfig {
         ansi_output: Option<bool>,
         filter: Option<String>,
         deployment_env: Option<String>,
+        metrics_interval: Option<Duration>,
     ) -> Self {
         Self {
             filter,
             log_file_path,
             deployment_env,
+            metrics_interval,
             ansi_output: ansi_output.unwrap_or(Self::ansi_output_default()),
             otel_config: collector_url.map(|url| TracingOtelConfig {
                 collector_url: url,
@@ -119,6 +125,7 @@ impl Default for TracingConfig {
             deployment_env: None,
             log_file_path: None,
             otel_config: None,
+            metrics_interval: None,
         }
     }
 }
@@ -280,6 +287,7 @@ fn init_otel_metrics_provider(
     collector_endpoint: &str,
     headers: HashMap<String, String>,
     resource: Resource,
+    interval: Option<Duration>,
 ) -> Result<SdkMeterProvider, ExporterBuildError> {
     let exporter = MetricExporter::builder()
         .with_http()
@@ -289,9 +297,13 @@ fn init_otel_metrics_provider(
         // .with_timeout(std::time::Duration::from_secs(3))
         .build()?;
 
+    let mut periodic = PeriodicReader::builder(exporter);
+    if let Some(duration) = interval {
+        periodic = periodic.with_interval(duration);
+    }
     let provider = SdkMeterProvider::builder()
         .with_resource(resource)
-        .with_periodic_exporter(exporter)
+        .with_reader(periodic.build())
         .build();
 
     Ok(provider)
@@ -496,7 +508,7 @@ pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig, defaul
         providers_handle.logs = Some(logs_provider);
 
         // metrics
-        let metrics_provider = init_otel_metrics_provider(endpoint, headers, resource)?;
+        let metrics_provider = init_otel_metrics_provider(endpoint, headers, resource, config.metrics_interval)?;
         // - add layer for tracing events -> otel/metrics
         let layer = layer.with(MetricsLayer::new(metrics_provider.clone()));
         providers_handle.metrics = Some(metrics_provider);
