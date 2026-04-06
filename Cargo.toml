@@ -1,6 +1,6 @@
 [package]
 name = "tracing-kickstart"
-version = "0.7.2"
+version = "0.7.3"
 authors = ["Kyle King"]
 edition = "2024"
 description = "Bootstrap tracing + OTEL connections. Intended for personal use only."
@@ -17,6 +17,7 @@ detector_telemetry = []
 attrs_crate_name = []
 attrs_origin = []
 attrs_version_expanded = []
+exponential_histograms = ["opentelemetry_sdk/spec_unstable_metrics_views"]
 
 [dependencies]
 console-subscriber = { version = "0.5.0", optional = true }

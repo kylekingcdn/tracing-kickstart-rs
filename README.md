@@ -94,3 +94,8 @@ async fn main() {
 
 **`attrs_version_expanded`**
   - Adds attributes for each version part: `service.version.major`, `service.version.minor`, `service.version.patch`
+
+**`exponential_histograms`**
+  - Adds support for exporting exponential histograms
+    - Exponential histograms can be collected and exported to prometheus native histograms
+

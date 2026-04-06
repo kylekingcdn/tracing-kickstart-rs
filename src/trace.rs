@@ -33,6 +33,8 @@ use tracing_opentelemetry::OpenTelemetryLayer;
 use opentelemetry_otlp::MetricExporter;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use tracing_opentelemetry::MetricsLayer;
+#[cfg(feature = "exponential_histograms")]
+use opentelemetry_sdk::metrics::{Aggregation, InstrumentKind, Stream};
 
 // opentelemetry - logs
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
@@ -310,10 +312,29 @@ fn init_otel_metrics_provider(
     if let Some(duration) = interval {
         periodic = periodic.with_interval(duration);
     }
-    let provider = SdkMeterProvider::builder()
+    let mut builder = SdkMeterProvider::builder();
+    builder = builder
         .with_resource(resource)
-        .with_reader(periodic.build())
-        .build();
+        .with_reader(periodic.build());
+    #[cfg(feature = "exponential_histograms")]
+    {
+        builder = builder.with_view(|inst| {
+            if let InstrumentKind::Histogram = inst.kind() {
+                let s = Stream::builder()
+                    .with_aggregation(Aggregation::Base2ExponentialHistogram {
+                        max_size: 160,
+                        max_scale: 20,
+                        record_min_max: true,
+                    })
+                    .build()
+                    .unwrap();
+                Some(s)
+            } else {
+                None
+            }
+        });
+    }
+    let provider = builder.build();
 
     Ok(provider)
 }
