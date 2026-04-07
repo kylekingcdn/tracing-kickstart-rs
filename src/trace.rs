@@ -350,8 +350,9 @@ fn init_otel_metrics_provider(
 ///
 /// let attrs = tracing_kickstart::build_attrs!();
 /// let conf = TracingConfig::default();
+/// let custom_fallback_env_filter = None;
 ///
-/// let tracing_providers = tracing_kickstart::init(attrs, &conf).unwrap();
+/// let tracing_providers = tracing_kickstart::init(attrs, &conf, custom_fallback_env_filter).unwrap();
 /// ```
 #[derive(Debug, Clone)]
 pub struct ServiceAttributeStore {
