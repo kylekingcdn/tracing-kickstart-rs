@@ -528,7 +528,7 @@ pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig, defaul
         let traces_provider =
             init_otel_traces_provider(endpoint, headers.clone(), resource.clone())?;
         // - add tracing layer for tracing/span -> otel/trace
-        let layer = layer.with(OpenTelemetryLayer::new(traces_provider.tracer(service_attrs.crate_name)));
+        let layer = layer.with(OpenTelemetryLayer::new(traces_provider.tracer(service_attrs.crate_name)).with_level(true));
         providers_handle.traces = Some(traces_provider);
 
         // logs
