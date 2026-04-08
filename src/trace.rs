@@ -466,7 +466,7 @@ pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig, defaul
         // library-defined fallback env filter
         else {
             let filter_str = format!(
-                "warn,{}=debug,tracing_kickstart=debug", // include self in default filter
+                "info,{}=debug",
                 service_attrs.crate_name
             );
             println!("Using tracing-kickstart fallback EnvFilter: {filter_str:?}");
