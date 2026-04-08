@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs::OpenOptions;
 use std::time::Duration;
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{EnvFilter, Layer as _};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
@@ -24,9 +24,11 @@ use opentelemetry_resource_detectors::ProcessResourceDetector;
 use opentelemetry_semantic_conventions::attribute;
 
 // opentelemetry - traces
-use opentelemetry::trace::TracerProvider as _; // for tracer trait
 use opentelemetry_otlp::SpanExporter;
 use opentelemetry_sdk::trace::{Sampler, SdkTracerProvider};
+#[cfg(not(feature = "tokio_console"))]
+use opentelemetry::trace::TracerProvider as _; // for tracer trait
+#[cfg(not(feature = "tokio_console"))]
 use tracing_opentelemetry::OpenTelemetryLayer;
 
 // opentelemetry - metrics
@@ -37,9 +39,10 @@ use tracing_opentelemetry::MetricsLayer;
 use opentelemetry_sdk::metrics::{Aggregation, InstrumentKind, Stream};
 
 // opentelemetry - logs
-use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::LogExporter;
 use opentelemetry_sdk::logs::SdkLoggerProvider;
+#[cfg(not(feature = "tokio_console"))]
+use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 
 pub use opentelemetry_otlp::ExporterBuildError;
 
@@ -411,6 +414,19 @@ macro_rules! build_attrs {
         }
     )
 }
+fn validate_non_empty_filter_str(filter: &str, source_name: &'static str) -> bool {
+    if filter.is_empty() {
+        println!("Ignoring empty filter string sourced from {source_name}");
+        false
+    } else {
+        true
+    }
+}
+fn validate_non_empty_filter(filter: &EnvFilter, source_name: &'static str) -> bool {
+    let filter_str = filter.to_string();
+    validate_non_empty_filter_str(&filter_str, source_name)
+}
+
 
 /// Initialize tracing
 ///
@@ -447,19 +463,19 @@ macro_rules! build_attrs {
 // if tracing config is none, otel providers won't be handled
 pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig, default_env_filter: Option<&str>) -> Result<TraceProviders, ExporterBuildError> {
     // resolve the env filter in the following priority
-    let filter: EnvFilter = {
+    let base_filter: EnvFilter = {
         // config env filter
-        if let Some(filter_str) = &config.filter {
+        if let Some(filter_str) = &config.filter && validate_non_empty_filter_str(filter_str, "provided config") {
             println!("Resolved tracing EnvFilter from provided config: {filter_str:?}");
             filter_str.into()
         }
         // `RUST LOG`
-        else if let Ok(filter) = EnvFilter::try_from_default_env() {
+        else if let Ok(filter) = EnvFilter::try_from_default_env() && validate_non_empty_filter(&filter, "RUST_LOG") {
             println!("Resolved tracing EnvFilter from `RUST_LOG`: {:?}", filter.to_string());
             filter
         }
         // function parameter (`default_env_filter`)
-        else if let Some(filter_str) = default_env_filter {
+        else if let Some(filter_str) = default_env_filter && validate_non_empty_filter_str(filter_str, "`tracing_kickstart::init()`") {
             println!("Resolving tracing EnvFilter from `tracing_kickstart::init(.., default_env_filter)`: {filter_str:?}");
             filter_str.into()
         }
@@ -476,24 +492,24 @@ pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig, defaul
 
     // add env filters for tokio console subscriber (controlled by feature flag)
     #[cfg(feature = "tokio_console")]
-    let filter = {
-        let mut filter_str = filter.to_string();
-        if !filter_str.is_empty() {
-            filter_str.push(',');
-        }
-        filter_str.push_str("tokio=trace,runtime=trace");
-        EnvFilter::from(filter_str)
-    };
-    println!("Launching with tracing filter: {}", filter);
+    let registry_filter = EnvFilter::new(format!("{base_filter},tokio=trace,runtime=trace"));
+    #[cfg(not(feature = "tokio_console"))]
+    let registry_filter = base_filter.clone();
+
+    // print the resolved env filter
+    println!("Using base tracing filters: {base_filter}");
+    if registry_filter.to_string() != base_filter.to_string() {
+        println!("Registry tracing filter: {registry_filter}");
+    }
 
     // build base layers
-    let layer = tracing_subscriber::registry()
-    .with(filter);
+    let layer = tracing_subscriber::registry().with(registry_filter);
 
     // stdout layer
     let layer = layer.with(
         tracing_subscriber::fmt::layer()
         .with_ansi(config.ansi_output)
+        .with_filter(base_filter.clone()) // use less permissive filter for stdout/logs
     );
 
     // conditionally add log file layer if path is provided in config
@@ -504,7 +520,11 @@ pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig, defaul
         .truncate(true)
         .open(path)
         .expect("Log file should be writable");
-        Some(tracing_subscriber::fmt::layer().with_ansi(false).with_writer(file))
+
+        tracing_subscriber::fmt::layer()
+        .with_ansi(false)
+        .with_writer(file)
+        .with_filter(base_filter)
     });
     let layer = layer.with(file_logging_layer);
 
@@ -523,15 +543,18 @@ pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig, defaul
         let resource = build_otel_resource(&service_attrs, config.deployment_env.clone());
 
         // traces
-        let traces_provider =
-            init_otel_traces_provider(endpoint, headers.clone(), resource.clone())?;
+        let traces_provider = init_otel_traces_provider(endpoint, headers.clone(), resource.clone())?;
         // - add tracing layer for tracing/span -> otel/trace
+        // skipped when tokio console is enabled to prevent flooding
+        #[cfg(not(feature = "tokio_console"))]
         let layer = layer.with(OpenTelemetryLayer::new(traces_provider.tracer(service_attrs.crate_name)).with_level(true));
         providers_handle.traces = Some(traces_provider);
 
         // logs
         let logs_provider = init_otel_logs_provider(endpoint, headers.clone(), resource.clone())?;
         // - add tracing layer for tracing -> otel/logs
+        // skipped when tokio console is enabled to prevent flooding
+        #[cfg(not(feature = "tokio_console"))]
         let layer = layer.with(OpenTelemetryTracingBridge::new(&logs_provider));
         providers_handle.logs = Some(logs_provider);
 
@@ -542,9 +565,11 @@ pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig, defaul
         providers_handle.metrics = Some(metrics_provider);
 
         layer.init();
+        println!("{:-<1$}", "-", 30);
         tracing::info!("OTEL tracing configured");
     } else {
         layer.init();
+        println!("{:-<1$}", "-", 30);
         tracing::warn!("OTEL tracing disabled");
     }
 
