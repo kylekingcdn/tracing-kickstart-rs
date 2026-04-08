@@ -497,18 +497,15 @@ pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig, defaul
     );
 
     // conditionally add log file layer if path is provided in config
-    let file_logging_layer = match &config.log_file_path {
-        Some(file_path) => {
-            let file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(file_path)
-            .expect("Log file should be writable");
-            Some(tracing_subscriber::fmt::layer().with_ansi(false).with_writer(file))
-        },
-        None => None
-    };
+    let file_logging_layer = config.log_file_path.as_ref().map(|path| {
+        let file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(path)
+        .expect("Log file should be writable");
+        Some(tracing_subscriber::fmt::layer().with_ansi(false).with_writer(file))
+    });
     let layer = layer.with(file_logging_layer);
 
     // conditionally add tokio console layer
