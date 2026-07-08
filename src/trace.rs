@@ -359,8 +359,9 @@ fn init_otel_metrics_provider(
 /// let attrs = tracing_kickstart::build_attrs!();
 /// let conf = TracingConfig::default();
 /// let custom_fallback_env_filter = None;
+/// let extra_resource_attrs = None;
 ///
-/// let tracing_providers = tracing_kickstart::init(attrs, &conf, custom_fallback_env_filter).unwrap();
+/// let tracing_providers = tracing_kickstart::init(attrs, &conf, custom_fallback_env_filter, extra_resource_attrs).unwrap();
 /// ```
 #[derive(Debug, Clone)]
 pub struct ServiceAttributeStore {
@@ -435,17 +436,44 @@ fn validate_non_empty_filter(filter: &EnvFilter, source_name: &'static str) -> b
 
 /// Initialize tracing
 ///
-/// Service attributes can be generated and passed in using the `build_attrs` macro, e.g.:
+/// Note: service attributes can be generated and passed in using the `build_attrs` macro, e.g.:
+///
+/// ---
+///
+/// # Examples
+///
+/// Basic usage
 ///
 /// ```
 /// use tracing_kickstart::TracingConfig;
 ///
 /// let attrs = tracing_kickstart::build_attrs!();
 /// let conf = TracingConfig::default();
-/// let custom_env_filter = None;
-/// // let custom_env_filter = "warn,example_app=debug"
+/// let tracing_providers = tracing_kickstart::init(
+///     attrs, &conf, None, None,
+/// ).unwrap();
 ///
-/// let tracing_providers = tracing_kickstart::init(attrs, &conf, custom_env_filter).unwrap();
+/// tracing_providers.register_globally(); // optional
+///
+/// // do some work..
+///
+/// tracing_providers.shutdown();
+/// ```
+///
+/// Extra customization
+///
+/// ```
+/// use tracing_kickstart::TracingConfig;
+///
+/// let attrs = tracing_kickstart::build_attrs!();
+/// let conf = TracingConfig::default();
+///
+/// let custom_env_filter = Some("warn,example_app=debug");
+/// let extra_resource_attrs = Some(vec![
+///     ("region".into(), "canada".into()),
+/// ]);
+///
+/// let tracing_providers = tracing_kickstart::init(attrs, &conf, custom_env_filter, extra_resource_attrs).unwrap();
 ///
 /// // Optionally register all configured providers globally
 /// tracing_providers.register_globally();
@@ -461,7 +489,7 @@ fn validate_non_empty_filter(filter: &EnvFilter, source_name: &'static str) -> b
 /// - `TracingConfig::filter` (typically set from app config env var, e.g. `APP__TRACING__FILTER=app=warn`)
 /// - `RUST_LOG` env var
 /// - The `default_env_filter` parameter in this function (used to overide the default fallback)
-/// - default fallback (library defined, set to `"warn,{crate_name}=debug,tracing_kickstart=debug`)
+/// - default fallback (library defined, set to `"info,{crate_name}=debug`)
 /// ---
 /// Regardless of how the `EnvFilter` is resolved, all required filters for `console_subscriber` will be added
 /// **if the console_subscriber** feature flag is enabled.
@@ -470,7 +498,7 @@ pub fn init(
     service_attrs: ServiceAttributeStore,
     config: &TracingConfig,
     default_env_filter: Option<&str>,
-    custom_resource_attrs: Option<Vec<(impl Into<Key>, impl Into<Value>)>>,
+    custom_resource_attrs: Option<Vec<(Key, Value)>>,
 ) -> Result<TraceProviders, ExporterBuildError> {
     // resolve the env filter in the following priority
     let base_filter: EnvFilter = {
@@ -553,7 +581,7 @@ pub fn init(
         let custom_attrs = custom_resource_attrs
             .unwrap_or_default()
             .into_iter()
-            .map(|(k,v)| KeyValue::new(k.into(), v.into()))
+            .map(|(k,v)| KeyValue::new(k, v))
             .collect();
         let resource = build_otel_resource(&service_attrs, config.deployment_env.clone(), custom_attrs);
 

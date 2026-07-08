@@ -49,7 +49,7 @@ async fn main() {
     let custom_fallback_env_filter = None; //Some("warn,example_app=debug")
 
     // optionally add custom resource attributes
-    let custom_resource_attrs = Some(vec![("region", "canada")]);
+    let custom_resource_attrs = Some(vec![("region".into(), "canada".into())]);
 
     // init tracing, receive a handle for the tracing providers
     let tracing_providers = tracing_kickstart::init(attrs, &conf.trace, custom_fallback_env_filter, custom_resource_attrs).unwrap();
