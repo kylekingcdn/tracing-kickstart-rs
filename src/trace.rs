@@ -9,7 +9,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 // opentelemetry - base
-use opentelemetry::KeyValue;
+use opentelemetry::{Key, KeyValue, Value};
 use opentelemetry_sdk::resource::Resource;
 #[cfg(feature = "detector_telemetry")]
 use opentelemetry_sdk::resource::TelemetryResourceDetector;
@@ -180,7 +180,7 @@ pub fn get_origin_crate_name() -> Option<&'static str> {
     }
 }
 
-fn build_otel_resource(service_attrs: &ServiceAttributeStore, deployment_env: Option<String>) -> Resource {
+fn build_otel_resource(service_attrs: &ServiceAttributeStore, deployment_env: Option<String>, custom_attrs: Vec<KeyValue>) -> Resource {
     // root/primary service name + package name
     let mut builder = Resource::builder_empty()
     .with_attribute(KeyValue::new(attribute::SERVICE_NAME, service_attrs.pkg_name));
@@ -217,6 +217,11 @@ fn build_otel_resource(service_attrs: &ServiceAttributeStore, deployment_env: Op
     // deployment env set from config/runtime env
     if let Some(env) = deployment_env {
         builder = builder.with_attribute(KeyValue::new(attribute::DEPLOYMENT_ENVIRONMENT_NAME, env));
+    }
+
+    // custom resource attrs
+    for attr in custom_attrs {
+        builder = builder.with_attribute(attr);
     }
 
     #[cfg(feature = "detector_telemetry")]
@@ -461,7 +466,12 @@ fn validate_non_empty_filter(filter: &EnvFilter, source_name: &'static str) -> b
 /// Regardless of how the `EnvFilter` is resolved, all required filters for `console_subscriber` will be added
 /// **if the console_subscriber** feature flag is enabled.
 // if tracing config is none, otel providers won't be handled
-pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig, default_env_filter: Option<&str>) -> Result<TraceProviders, ExporterBuildError> {
+pub fn init(
+    service_attrs: ServiceAttributeStore,
+    config: &TracingConfig,
+    default_env_filter: Option<&str>,
+    custom_resource_attrs: Option<Vec<(impl Into<Key>, impl Into<Value>)>>,
+) -> Result<TraceProviders, ExporterBuildError> {
     // resolve the env filter in the following priority
     let base_filter: EnvFilter = {
         // config env filter
@@ -540,7 +550,12 @@ pub fn init(service_attrs: ServiceAttributeStore, config: &TracingConfig, defaul
         println!("Initializing OTEL config");
         let endpoint = &otel_config.collector_url;
         let headers = build_otel_headers(&otel_config.collector_auth_header);
-        let resource = build_otel_resource(&service_attrs, config.deployment_env.clone());
+        let custom_attrs = custom_resource_attrs
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(k,v)| KeyValue::new(k.into(), v.into()))
+            .collect();
+        let resource = build_otel_resource(&service_attrs, config.deployment_env.clone(), custom_attrs);
 
         // traces
         let traces_provider = init_otel_traces_provider(endpoint, headers.clone(), resource.clone())?;

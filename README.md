@@ -48,8 +48,11 @@ async fn main() {
     // set an optional override for the fallback env filter set by tracing_kickstart
     let custom_fallback_env_filter = None; //Some("warn,example_app=debug")
 
+    // optionally add custom resource attributes
+    let custom_resource_attrs = Some(vec![("region", "canada")]);
+
     // init tracing, receive a handle for the tracing providers
-    let tracing_providers = tracing_kickstart::init(attrs, &conf.trace, custom_fallback_env_filter).unwrap();
+    let tracing_providers = tracing_kickstart::init(attrs, &conf.trace, custom_fallback_env_filter, custom_resource_attrs).unwrap();
     tracing_providers.register_globally(); // optionally register all configured providers globally
     tracing::info!(?conf.trace, "Tracing initialized");
 
